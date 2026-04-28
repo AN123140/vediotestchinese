@@ -1,0 +1,59 @@
+# Dependencies
+node_modules
+
+# Build output
+dist
+dist-ssr
+out
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+*.egg
+
+# Whisper model cache (large files, do not commit)
+*.pt
+.cache/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Env & secrets
+*.local
+.env
+.env.*
+
+# Temp files
+*.tmp
+*.temp
+
+# Media files (user uploads, not source)
+*.wav
+*.mp3
+*.mp4
+*.avi
+*.mkv
+*.webm
