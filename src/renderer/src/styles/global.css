@@ -4,27 +4,67 @@
   padding: 0;
 }
 
-:root {
+/* ==================== 深色主题（默认） ==================== */
+:root,
+[data-theme="dark"] {
   --bg-primary: #0f0f1a;
   --bg-secondary: #1a1a2e;
   --bg-card: #16213e;
   --bg-hover: #1f2b4a;
   --bg-active: #0d3b6e;
+  --bg-input: #0d0d1a;
   --accent: #4f8ef7;
   --accent-hover: #6ba3ff;
   --accent-light: rgba(79, 142, 247, 0.15);
+  --accent-solid: #3a7af0;
   --text-primary: #e8eaf6;
   --text-secondary: #9ba3c4;
   --text-muted: #5c6584;
   --border: #2a3a5c;
   --border-light: #1e2d4a;
   --success: #4caf84;
+  --success-light: rgba(76, 175, 132, 0.15);
   --warning: #f0a742;
+  --warning-light: rgba(240, 167, 66, 0.15);
   --danger: #e05c6d;
+  --danger-light: rgba(224, 92, 109, 0.15);
+  --info: #5c9ce6;
+  --info-light: rgba(92, 156, 230, 0.15);
   --radius: 8px;
   --radius-lg: 12px;
   --shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --overlay: rgba(0, 0, 0, 0.6);
+}
+
+/* ==================== 浅色主题 ==================== */
+[data-theme="light"] {
+  --bg-primary: #f5f6fa;
+  --bg-secondary: #ffffff;
+  --bg-card: #ffffff;
+  --bg-hover: #eef1f7;
+  --bg-active: #e2e8f4;
+  --bg-input: #f0f2f8;
+  --accent: #4f8ef7;
+  --accent-hover: #3a7af0;
+  --accent-light: rgba(79, 142, 247, 0.1);
+  --accent-solid: #4f8ef7;
+  --text-primary: #1a1a2e;
+  --text-secondary: #5a6078;
+  --text-muted: #9ba3c4;
+  --border: #d8dde8;
+  --border-light: #e8ecf2;
+  --success: #34a853;
+  --success-light: rgba(52, 168, 83, 0.1);
+  --warning: #ea8c0a;
+  --warning-light: rgba(234, 140, 10, 0.1);
+  --danger: #d93025;
+  --danger-light: rgba(217, 48, 37, 0.1);
+  --info: #4285f4;
+  --info-light: rgba(66, 133, 244, 0.1);
+  --shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --overlay: rgba(0, 0, 0, 0.3);
 }
 
 body {
@@ -42,7 +82,7 @@ body {
   flex-direction: column;
 }
 
-/* 滚动条 */
+/* ==================== 滚动条 ==================== */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -58,10 +98,11 @@ body {
   background: var(--text-muted);
 }
 
-/* 通用按钮 */
+/* ==================== 通用按钮 ==================== */
 .btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   padding: 8px 16px;
   border: none;
@@ -71,6 +112,7 @@ body {
   cursor: pointer;
   transition: all 0.15s;
   white-space: nowrap;
+  line-height: 1;
 }
 .btn:disabled {
   opacity: 0.45;
@@ -94,20 +136,31 @@ body {
   border-color: var(--accent);
 }
 .btn-danger {
-  background: rgba(224, 92, 109, 0.15);
+  background: var(--danger-light);
   color: var(--danger);
-  border: 1px solid rgba(224, 92, 109, 0.3);
+  border: 1px solid var(--danger);
 }
 .btn-danger:not(:disabled):hover {
-  background: rgba(224, 92, 109, 0.25);
+  background: var(--danger);
+  color: #fff;
 }
 .btn-success {
-  background: rgba(76, 175, 132, 0.15);
+  background: var(--success-light);
   color: var(--success);
-  border: 1px solid rgba(76, 175, 132, 0.3);
+  border: 1px solid var(--success);
 }
 .btn-success:not(:disabled):hover {
-  background: rgba(76, 175, 132, 0.25);
+  background: var(--success);
+  color: #fff;
+}
+.btn-warning {
+  background: var(--warning-light);
+  color: var(--warning);
+  border: 1px solid var(--warning);
+}
+.btn-warning:not(:disabled):hover {
+  background: var(--warning);
+  color: #fff;
 }
 .btn-sm {
   padding: 5px 10px;
@@ -117,6 +170,7 @@ body {
   padding: 7px;
   background: transparent;
   color: var(--text-secondary);
+  border: 1px solid transparent;
   border-radius: var(--radius);
 }
 .btn-icon:hover {
@@ -124,23 +178,32 @@ body {
   color: var(--text-primary);
 }
 
-/* 输入框 */
-input, textarea {
-  background: var(--bg-primary);
+/* ==================== 输入框 ==================== */
+input, textarea, select {
+  background: var(--bg-input);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   color: var(--text-primary);
   font-size: 13px;
-  padding: 6px 10px;
+  padding: 7px 10px;
   outline: none;
-  transition: border-color 0.15s;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  font-family: inherit;
 }
-input:focus, textarea:focus {
+input:focus, textarea:focus, select:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-light);
 }
+select {
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%239ba3c4' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 28px;
+}
 
-/* 标签 */
+/* ==================== 标签 ==================== */
 .tag {
   display: inline-flex;
   align-items: center;
@@ -149,11 +212,172 @@ input:focus, textarea:focus {
   font-size: 11px;
   font-weight: 600;
 }
+.tag-success {
+  background: var(--success-light);
+  color: var(--success);
+}
+.tag-warning {
+  background: var(--warning-light);
+  color: var(--warning);
+}
+.tag-danger {
+  background: var(--danger-light);
+  color: var(--danger);
+}
+.tag-info {
+  background: var(--info-light);
+  color: var(--info);
+}
 
-/* 动画 */
+/* ==================== 表格 ==================== */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.data-table th {
+  text-align: left;
+  padding: 10px 12px;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--bg-hover);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.data-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-light);
+  color: var(--text-primary);
+}
+.data-table tr:hover td {
+  background: var(--bg-hover);
+}
+
+/* ==================== 卡片 ==================== */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+}
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* ==================== 开关 ==================== */
+.toggle {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  background: var(--border);
+  border-radius: 11px;
+  cursor: pointer;
+  transition: background 0.2s;
+  border: none;
+  padding: 0;
+}
+.toggle.active {
+  background: var(--accent);
+}
+.toggle::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+.toggle.active::after {
+  transform: translateX(18px);
+}
+
+/* ==================== 复选框 ==================== */
+.checkbox-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.checkbox {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* ==================== 模态框 ==================== */
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: var(--overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.modal {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  min-width: 480px;
+  max-width: 700px;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow);
+}
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.modal-title {
+  font-size: 16px;
+  font-weight: 600;
+}
+.modal-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  font-size: 18px;
+  line-height: 1;
+}
+.modal-close:hover {
+  color: var(--text-primary);
+}
+
+/* ==================== 动画 ==================== */
 .fade-enter-active, .fade-leave-active {
   transition: opacity 0.2s;
 }
 .fade-enter-from, .fade-leave-to {
+  opacity: 0;
+}
+.slide-enter-active, .slide-leave-active {
+  transition: transform 0.25s, opacity 0.25s;
+}
+.slide-enter-from {
+  transform: translateY(8px);
+  opacity: 0;
+}
+.slide-leave-to {
+  transform: translateY(-8px);
   opacity: 0;
 }

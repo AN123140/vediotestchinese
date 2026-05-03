@@ -3,107 +3,112 @@
     <!-- 标题栏 -->
     <TitleBar />
 
-    <!-- 主内容区 -->
-    <div class="app-body">
-      <!-- 左侧：视频预览区 -->
-      <div class="panel panel-left">
-        <VideoPlayer
-          :videoSrc="videoSrc"
-          :videoInfo="videoInfo"
-          :currentTime="currentTime"
-          :subtitles="subtitles"
-          @timeupdate="handleTimeUpdate"
-          @drop-video="handleDropVideo"
-        />
-      </div>
+    <!-- Tab 导航栏 -->
+    <TabBar v-model:activeTab="store.activeTab" />
 
-      <!-- 右侧：字幕编辑区 -->
-      <div class="panel panel-right">
-        <SubtitleEditor
-          :subtitles="subtitles"
-          :currentTime="currentTime"
-          :activeIndex="activeSubtitleIndex"
-          @update="handleSubtitleUpdate"
-          @delete="handleSubtitleDelete"
-          @add="handleSubtitleAdd"
-          @seek="handleSeek"
+    <!-- 主内容区 -->
+    <div class="app-content">
+      <!-- 单视频处理 -->
+      <template v-if="store.activeTab === 'single'">
+        <div class="app-body">
+          <div class="panel panel-left">
+            <VideoPlayer
+              :videoSrc="store.videoSrc"
+              :videoInfo="store.videoInfo"
+              :currentTime="store.currentTime"
+              :subtitles="store.subtitles"
+              @timeupdate="handleTimeUpdate"
+              @drop-video="handleDropVideo"
+            />
+          </div>
+          <div class="panel panel-right">
+            <SubtitleEditor
+              :subtitles="store.subtitles"
+              :currentTime="store.currentTime"
+              :activeIndex="activeSubtitleIndex"
+              @update="handleSubtitleUpdate"
+              @delete="handleSubtitleDelete"
+              @add="handleSubtitleAdd"
+              @seek="handleSeek"
+            />
+          </div>
+        </div>
+        <BottomBar
+          :hasVideo="!!store.videoSrc"
+          :isProcessing="store.isProcessing"
+          :progress="store.progress"
+          :progressText="store.progressText"
+          :hasSubtitles="store.subtitles.length > 0"
+          v-model:language="store.recognizeLanguage"
+          @import="handleImportVideo"
+          @recognize="handleRecognize"
+          @export-srt="handleExportSrt"
         />
-      </div>
+      </template>
+
+      <!-- 批量处理 -->
+      <template v-if="store.activeTab === 'batch'">
+        <BatchProcess />
+      </template>
+
+      <!-- 字幕翻译 -->
+      <template v-if="store.activeTab === 'translate'">
+        <SubtitleTranslate />
+      </template>
+
+      <!-- AI 智能 -->
+      <template v-if="store.activeTab === 'ai'">
+        <AIPanel />
+      </template>
+
+      <!-- 设置 -->
+      <template v-if="store.activeTab === 'settings'">
+        <SettingsPanel />
+      </template>
     </div>
 
-    <!-- 底部操作栏 -->
-    <BottomBar
-      :hasVideo="!!videoSrc"
-      :isProcessing="isProcessing"
-      :progress="progress"
-      :progressText="progressText"
-      :hasSubtitles="subtitles.length > 0"
-      v-model:language="recognizeLanguage"
-      @import="handleImportVideo"
-      @recognize="handleRecognize"
-      @export-srt="handleExportSrt"
-    />
-
     <!-- 通知 -->
-    <Notification :messages="notifications" @dismiss="dismissNotification" />
+    <Notification :messages="store.notifications" @dismiss="dismissNotification" />
   </div>
 </template>
 
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import store, { useAppStore } from './composables/useAppStore.js'
 import TitleBar from './components/TitleBar.vue'
+import TabBar from './components/TabBar.vue'
 import VideoPlayer from './components/VideoPlayer.vue'
 import SubtitleEditor from './components/SubtitleEditor.vue'
 import BottomBar from './components/BottomBar.vue'
 import Notification from './components/Notification.vue'
+import BatchProcess from './components/BatchProcess.vue'
+import SubtitleTranslate from './components/SubtitleTranslate.vue'
+import SettingsPanel from './components/SettingsPanel.vue'
+import AIPanel from './components/AIPanel.vue'
+import { formatSrtTime } from './utils/formatTime.js'
 
-// 状态
-const videoSrc = ref('')
-const videoObjectUrl = ref('')   // blob URL，用于浏览器环境播放
-const videoInfo = ref(null)
-const currentTime = ref(0)
-const subtitles = ref([])
-const isProcessing = ref(false)
-const progress = ref(0)
-const progressText = ref('')
-const notifications = ref([])
-const recognizeLanguage = ref('zh')  // 识别语言，默认中文
-
-// 浏览器环境拖拽事件监听
-function onBrowserFileDrop(e) {
-  loadVideoFromBrowserFile(e.detail)
-}
-
-onMounted(() => {
-  window.addEventListener('browser-file-drop', onBrowserFileDrop)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('browser-file-drop', onBrowserFileDrop)
-})
+const { notify, dismissNotification } = useAppStore()
 
 // 当前激活字幕索引
 const activeSubtitleIndex = computed(() => {
-  if (!subtitles.value.length || currentTime.value === 0) return -1
-  return subtitles.value.findIndex(
-    (s) => currentTime.value >= s.start && currentTime.value <= s.end
+  if (!store.subtitles.length || store.currentTime === 0) return -1
+  return store.subtitles.findIndex(
+    s => store.currentTime >= s.start && store.currentTime <= s.end
   )
 })
 
 // 时间更新
 function handleTimeUpdate(time) {
-  currentTime.value = time
+  store.currentTime = time
 }
 
 // 跳转时间
 function handleSeek(time) {
-  currentTime.value = time
-  // 通过 VideoPlayer ref 控制
+  store.currentTime = time
 }
 
-// 导入视频（按钮）
+// 导入视频
 async function handleImportVideo() {
-  // 浏览器环境：用 <input type="file"> 选择文件
   if (!window.electronAPI) {
     const input = document.createElement('input')
     input.type = 'file'
@@ -115,13 +120,11 @@ async function handleImportVideo() {
     input.click()
     return
   }
-
-  // Electron 环境：用原生对话框
   const file = await window.electronAPI.openVideoDialog()
   if (file) loadElectronVideo(file)
 }
 
-// 拖拽导入 / 点击空状态区域时 file 为 null 则打开对话框
+// 拖拽导入
 async function handleDropVideo(file) {
   if (!file) {
     await handleImportVideo()
@@ -130,150 +133,159 @@ async function handleDropVideo(file) {
   }
 }
 
-// Electron 环境加载视频
 function loadElectronVideo(file) {
-  videoSrc.value = 'file:///' + file.path.replace(/\\/g, '/')
-  videoInfo.value = {
-    name: file.name,
-    size: formatSize(file.size),
-    path: file.path,
-  }
-  subtitles.value = []
+  store.videoSrc = 'file:///' + file.path.replace(/\\/g, '/')
+  store.videoInfo = { name: file.name, size: formatSize(file.size), path: file.path }
+  store.subtitles = []
   notify('success', `已加载：${file.name}`)
 }
 
-// 浏览器环境加载视频（从 File 对象生成 blob URL）
 function loadVideoFromBrowserFile(file) {
-  // 回收旧 URL
-  if (videoObjectUrl.value) URL.revokeObjectURL(videoObjectUrl.value)
-  videoObjectUrl.value = URL.createObjectURL(file)
-  videoSrc.value = videoObjectUrl.value
-  videoInfo.value = {
-    name: file.name,
-    size: formatSize(file.size),
-  }
-  subtitles.value = []
-  currentTime.value = 0
+  if (store.videoObjectUrl) URL.revokeObjectURL(store.videoObjectUrl)
+  store.videoObjectUrl = URL.createObjectURL(file)
+  store.videoSrc = store.videoObjectUrl
+  store.videoInfo = { name: file.name, size: formatSize(file.size) }
+  store.subtitles = []
+  store.currentTime = 0
   notify('success', `已加载：${file.name}`)
 }
 
-// 真实 Whisper 语音识别（调用 Python 后端 API）
-async function handleRecognize() {
-  if (!videoSrc.value) return
-  isProcessing.value = true
-  progress.value = 0
-  progressText.value = '准备上传视频...'
+const BACKEND_URL = 'http://127.0.0.1:8765'
 
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), 10 * 60 * 1000)  // 10 分钟超时
+// 后端服务健康检查（最多等待15秒，覆盖模型加载期）
+async function checkBackendHealth() {
+  const MAX_RETRIES = 5
+  const RETRY_DELAY = 3000
+  for (let i = 0; i < MAX_RETRIES; i++) {
+    try {
+      const resp = await fetch(`${BACKEND_URL}/api/health`, { signal: AbortSignal.timeout(2500) })
+      if (resp.ok) return true
+    } catch { /* 连接失败，继续重试 */ }
+    if (i < MAX_RETRIES - 1) {
+      store.progressText = `等待识别服务启动中...（${i + 1}/${MAX_RETRIES}）`
+      await new Promise(r => setTimeout(r, RETRY_DELAY))
+    }
+  }
+  return false
+}
+
+// 将网络错误分类为用户友好的提示
+function classifyError(e) {
+  if (e.name === 'AbortError') return '请求超时（处理时间超过10分钟）'
+  const msg = String(e.message || '')
+  if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('ERR_CONNECTION_REFUSED'))
+    return '识别服务连接中断，请检查后端服务是否正常运行'
+  if (msg.includes('服务器错误')) return msg
+  if (msg.includes('识别失败')) return msg
+  return `识别失败: ${msg}`
+}
+
+// 语音识别
+async function handleRecognize() {
+  if (!store.videoSrc) return
+  store.isProcessing = true
+  store.progress = 0
+  store.progressText = '检查识别服务状态...'
 
   try {
-    progress.value = 10
-    progressText.value = '正在上传视频文件...'
-    const formData = new FormData()
-
-    // Electron 环境：用文件路径接口（无需上传文件）
-    if (window.electronAPI && videoInfo.value?.path) {
-      progressText.value = '正在处理视频文件...'
-      const result = await callRecognizeByPath(videoInfo.value.path, controller.signal)
-      clearTimeout(timeoutId)
-      onRecognizeResult(result)
+    const healthy = await checkBackendHealth()
+    if (!healthy) {
+      notify('error', '识别服务不可用。请确认已运行：python backend/server.py（首次启动需加载模型，约1分钟）')
       return
     }
 
-    // 浏览器环境：上传视频 blob 到后端
-    progressText.value = '正在读取视频文件...'
-    const videoBlob = await fetch(videoSrc.value).then(r => r.blob())
-    formData.append('file', videoBlob, videoInfo.value?.name || 'video.mp4')
-    formData.append('model_size', 'large-v3')
-    formData.append('language', recognizeLanguage.value)
+    store.progress = 10
+    store.progressText = '正在上传视频文件...'
 
-    progress.value = 20
-    progressText.value = '正在上传到识别服务器...'
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 10 * 60 * 1000)
 
-    const resp = await fetch('http://127.0.0.1:8765/api/recognize', {
-      method: 'POST',
-      body: formData,
-      signal: controller.signal,
-    })
-    clearTimeout(timeoutId)
+    try {
+      if (window.electronAPI && store.videoInfo?.path) {
+        store.progressText = '正在处理视频文件...'
+        const result = await callRecognizeByPath(store.videoInfo.path, controller.signal)
+        clearTimeout(timeoutId)
+        onRecognizeResult(result)
+        return
+      }
 
-    progress.value = 80
-    progressText.value = '正在解析识别结果...'
+      store.progressText = '正在读取视频文件...'
+      const videoBlob = await fetch(store.videoSrc).then(r => r.blob())
+      const formData = new FormData()
+      formData.append('file', videoBlob, store.videoInfo?.name || 'video.mp4')
+      formData.append('model_size', 'large-v3')
+      formData.append('language', store.recognizeLanguage)
 
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({}))
-      throw new Error(err.detail || `服务器错误: ${resp.status}`)
+      store.progress = 20
+      store.progressText = '正在上传到识别服务器...'
+
+      const resp = await fetch(`${BACKEND_URL}/api/recognize`, {
+        method: 'POST',
+        body: formData,
+        signal: controller.signal,
+      })
+      clearTimeout(timeoutId)
+
+      store.progress = 80
+      store.progressText = '正在解析识别结果...'
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}))
+        throw new Error(err.detail || `服务器错误: ${resp.status}`)
+      }
+      const result = await resp.json()
+      onRecognizeResult(result)
+    } catch (e) {
+      notify('error', classifyError(e))
+    } finally {
+      clearTimeout(timeoutId)
     }
-
-    const result = await resp.json()
-    onRecognizeResult(result)
-
   } catch (e) {
-    clearTimeout(timeoutId)
-    const msg = e.name === 'AbortError' ? '请求超时（处理时间超过10分钟）' : `识别失败: ${e.message}`
-    notify('error', msg)
-    console.error('Recognize error:', e)
+    notify('error', classifyError(e))
   } finally {
-    isProcessing.value = false
-    progress.value = 0
-    progressText.value = ''
+    store.isProcessing = false
+    store.progress = 0
+    store.progressText = ''
   }
 }
 
-// Electron 环境：通过文件路径调用识别接口
 async function callRecognizeByPath(filePath, signal) {
-  progress.value = 20
-  progressText.value = '正在调用识别服务...'
-
-  const resp = await fetch('http://127.0.0.1:8765/api/recognize/path', {
+  store.progress = 20
+  store.progressText = '正在调用识别服务...'
+  const resp = await fetch(`${BACKEND_URL}/api/recognize/path`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      path: filePath,
-      model_size: 'large-v3',
-      language: recognizeLanguage.value,
-    }),
+    body: JSON.stringify({ path: filePath, model_size: 'large-v3', language: store.recognizeLanguage }),
     signal,
   })
-
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({}))
     throw new Error(err.detail || `服务器错误: ${resp.status}`)
   }
-
   return await resp.json()
 }
 
-// 处理识别结果
 function onRecognizeResult(result) {
-  if (!result.success) {
-    throw new Error('识别失败')
-  }
-
-  // 转换后端格式到前端格式
-  subtitles.value = (result.subtitles || []).map((s, i) => ({
-    id: s.id || i + 1,
-    start: s.start,
-    end: s.end,
-    text: s.text,
+  if (!result.success) throw new Error('识别失败')
+  store.subtitles = (result.subtitles || []).map((s, i) => ({
+    id: s.id || i + 1, start: s.start, end: s.end, text: s.text,
   }))
-
-  progress.value = 100
-  progressText.value = '完成！'
-  notify('success', `识别完成，共生成 ${subtitles.value.length} 条字幕（语言：${result.language || '自动检测'}）`)
+  store.progress = 100
+  store.progressText = '完成！'
+  notify('success', `识别完成，共生成 ${store.subtitles.length} 条字幕`)
 }
 
 // 导出 SRT
 async function handleExportSrt() {
-  if (!subtitles.value.length) return
-  const content = generateSrt(subtitles.value)
+  if (!store.subtitles.length) return
+  const content = store.subtitles
+    .map((s, i) => `${i + 1}\n${formatSrtTime(s.start)} --> ${formatSrtTime(s.end)}\n${s.text}\n`)
+    .join('\n')
 
   if (window.electronAPI) {
     const savedPath = await window.electronAPI.saveSrtDialog(content)
     if (savedPath) notify('success', `字幕已导出至：${savedPath}`)
   } else {
-    // 浏览器环境降级处理
     const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -287,62 +299,54 @@ async function handleExportSrt() {
 
 // 字幕操作
 function handleSubtitleUpdate(index, data) {
-  subtitles.value[index] = { ...subtitles.value[index], ...data }
+  store.subtitles[index] = { ...store.subtitles[index], ...data }
 }
 
 function handleSubtitleDelete(index) {
-  subtitles.value.splice(index, 1)
+  store.subtitles.splice(index, 1)
 }
 
 function handleSubtitleAdd(afterIndex) {
-  const prev = subtitles.value[afterIndex]
-  const newSub = {
-    id: Date.now(),
-    start: prev ? prev.end + 0.1 : 0,
-    end: prev ? prev.end + 2 : 2,
-    text: '新字幕',
-  }
-  subtitles.value.splice(afterIndex + 1, 0, newSub)
+  const prev = store.subtitles[afterIndex]
+  const newSub = { id: Date.now(), start: prev ? prev.end + 0.1 : 0, end: prev ? prev.end + 2 : 2, text: '' }
+  store.subtitles.splice(afterIndex + 1, 0, newSub)
 }
+
+// 快捷键
+function onKeyDown(e) {
+  if (e.ctrlKey && e.shiftKey) {
+    switch (e.key.toLowerCase()) {
+      case 'b': e.preventDefault(); store.activeTab = 'batch'; break
+      case 't': e.preventDefault(); store.activeTab = 'translate'; break
+      case 'a': e.preventDefault(); store.activeTab = 'ai'; break
+      case 'i': e.preventDefault(); store.activeTab = 'ai'; store.aiSubFeature = 'one-click'; break
+      case 'p': e.preventDefault(); store.activeTab = 'ai'; store.aiSubFeature = 'punctuation'; break
+      case 's': e.preventDefault(); store.activeTab = 'ai'; store.aiSubFeature = 'segment'; break
+      case 'c': e.preventDefault(); store.activeTab = 'ai'; store.aiSubFeature = 'correction'; break
+    }
+  }
+}
+
+// 浏览器拖拽事件
+function onBrowserFileDrop(e) {
+  loadVideoFromBrowserFile(e.detail)
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', onKeyDown)
+  window.addEventListener('browser-file-drop', onBrowserFileDrop)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', onKeyDown)
+  window.removeEventListener('browser-file-drop', onBrowserFileDrop)
+})
 
 // 工具函数
-function generateSrt(subs) {
-  return subs
-    .map((s, i) => `${i + 1}\n${formatSrtTime(s.start)} --> ${formatSrtTime(s.end)}\n${s.text}\n`)
-    .join('\n')
-}
-
-function formatSrtTime(sec) {
-  const h = Math.floor(sec / 3600)
-  const m = Math.floor((sec % 3600) / 60)
-  const s = Math.floor(sec % 60)
-  const ms = Math.round((sec % 1) * 1000)
-  return `${pad(h)}:${pad(m)}:${pad(s)},${pad(ms, 3)}`
-}
-
-function pad(n, len = 2) {
-  return String(n).padStart(len, '0')
-}
-
 function formatSize(bytes) {
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
   if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
   return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB'
-}
-
-function sleep(ms) {
-  return new Promise((r) => setTimeout(r, ms))
-}
-
-function notify(type, message) {
-  const id = Date.now()
-  notifications.value.push({ id, type, message })
-  setTimeout(() => dismissNotification(id), 4000)
-}
-
-function dismissNotification(id) {
-  const idx = notifications.value.findIndex((n) => n.id === id)
-  if (idx !== -1) notifications.value.splice(idx, 1)
 }
 </script>
 
@@ -352,6 +356,14 @@ function dismissNotification(id) {
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
+}
+
+.app-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
 }
 
 .app-body {

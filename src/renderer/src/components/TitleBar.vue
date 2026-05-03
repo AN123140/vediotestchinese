@@ -9,7 +9,7 @@
         </svg>
       </div>
       <span class="app-name">视频字幕生成器</span>
-      <span class="version-tag">v1.0</span>
+      <span class="version-tag">v2.0</span>
     </div>
 
     <div class="title-drag-area"></div>

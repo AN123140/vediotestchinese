@@ -289,9 +289,253 @@ async def recognize_by_path(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ============================================================
+# v3.0  AI 智能功能接口
+# ============================================================
+
+from typing import Any, Dict, List
+from pydantic import BaseModel
+import re
+
+
+class SubtitleItem(BaseModel):
+    id: int
+    start: float
+    end: float
+    text: str
+
+
+class SegmentRequest(BaseModel):
+    subtitles: List[Dict[str, Any]]
+    config: Dict[str, Any] = {}
+
+
+class PunctuationRequest(BaseModel):
+    subtitles: List[Dict[str, Any]]
+    enabled_types: Dict[str, bool] = {}
+    mode: str = "all"
+
+
+class CorrectionRequest(BaseModel):
+    subtitles: List[Dict[str, Any]]
+
+
+# ---- 智能分段 ----
+@app.post("/api/ai/segment")
+async def ai_segment(req: SegmentRequest):
+    """
+    规则引擎版本智能分段：
+    - 合并 < min_duration 的短句到相邻句
+    - 拆分 > max_duration 或超字数的长句
+    """
+    subs = [dict(s) for s in req.subtitles]
+    cfg = req.config
+    min_dur = float(cfg.get("minDuration", 1.0))
+    max_dur = float(cfg.get("maxDuration", 8.0))
+    max_chars = int(cfg.get("maxChars", 20))
+
+    before_preview = []
+    after_preview = []
+    changes = 0
+
+    # 第一步：合并过短的字幕
+    merged = []
+    i = 0
+    while i < len(subs):
+        s = subs[i]
+        dur = s["end"] - s["start"]
+        if dur < min_dur and len(s["text"].strip()) < 4 and merged:
+            # 合并到前一条
+            prev = merged[-1]
+            prev["text"] = prev["text"].rstrip("。，！？、") + s["text"]
+            prev["end"] = s["end"]
+            before_preview.append({"text": s["text"], "start": s["start"], "end": s["end"], "changed": True})
+            changes += 1
+        else:
+            merged.append(dict(s))
+        i += 1
+
+    # 第二步：拆分过长的字幕
+    result = []
+    for s in merged:
+        dur = s["end"] - s["start"]
+        text = s["text"].strip()
+        if dur > max_dur or len(text) > max_chars:
+            # 尝试在逗号、句号、顿号处拆分
+            split_points = [m.start() + 1 for m in re.finditer(r'[，。、；]', text)]
+            if split_points:
+                mid = split_points[len(split_points) // 2]
+                t1, t2 = text[:mid], text[mid:]
+                mid_time = s["start"] + (s["end"] - s["start"]) * mid / len(text)
+                before_preview.append({"text": text, "start": s["start"], "end": s["end"], "changed": True})
+                after_preview.append({"text": t1, "start": s["start"], "end": mid_time, "changed": True})
+                after_preview.append({"text": t2, "start": mid_time, "end": s["end"], "changed": True})
+                result.append({"id": s["id"], "start": s["start"], "end": mid_time, "text": t1})
+                result.append({"id": s["id"] + 0.5, "start": mid_time, "end": s["end"], "text": t2})
+                changes += 1
+            else:
+                result.append(s)
+        else:
+            result.append(s)
+
+    # 重新分配 id
+    for idx, s in enumerate(result):
+        s["id"] = idx + 1
+
+    # 补全预览（未变化条目）
+    for s in subs[:5]:
+        if not any(p["text"] == s["text"] for p in before_preview):
+            before_preview.insert(0, {"text": s["text"], "start": s["start"], "end": s["end"], "changed": False})
+
+    return {
+        "subtitles": result,
+        "changes_count": changes,
+        "before_preview": before_preview[:8],
+        "after_preview": after_preview[:8] or [{"text": s["text"], "start": s["start"], "end": s["end"], "changed": False} for s in result[:5]],
+    }
+
+
+# ---- 智能标点 ----
+@app.post("/api/ai/punctuation")
+async def ai_punctuation(req: PunctuationRequest):
+    """
+    规则引擎版本智能标点：
+    - 句尾无标点时，根据关键词添加 ？！，。
+    """
+    subs = [dict(s) for s in req.subtitles]
+    enabled = req.enabled_types
+    changes = []
+
+    question_words = ["吗", "呢", "吧", "么", "是否", "怎么", "为什么", "哪", "谁", "几", "多少"]
+    exclaim_words = ["太", "真棒", "好棒", "厉害", "不得了", "太好了", "哇", "真的假的"]
+    end_punct = set("。！？…")
+
+    for i, s in enumerate(subs):
+        text = s["text"].strip()
+        if not text:
+            continue
+        last = text[-1]
+        if last in end_punct or last in "，、；：":
+            continue  # 已有标点，跳过
+
+        new_text = text
+        reason = None
+
+        if enabled.get("question", True) and any(w in text for w in question_words):
+            new_text = text + "？"
+            reason = "疑问语气"
+        elif enabled.get("exclamation", True) and any(w in text for w in exclaim_words):
+            new_text = text + "！"
+            reason = "感叹语气"
+        elif enabled.get("period", True):
+            new_text = text + "。"
+            reason = "句末添加句号"
+
+        if new_text != text and reason:
+            changes.append({"index": i, "before": text, "after": new_text, "reason": reason})
+            subs[i]["text"] = new_text
+
+    return {
+        "subtitles": subs,
+        "changes": changes,
+        "changes_count": len(changes),
+    }
+
+
+# ---- 上下文纠错 ----
+# 常见同音/近音错误词典（MVP 规则库）
+_CORRECTION_DICT = {
+    "阿狸爸爸": "阿里巴巴",
+    "腾训": "腾讯",
+    "腾训视频": "腾讯视频",
+    "新lang": "新浪",
+    "百渡": "百度",
+    "威信": "微信",
+    "爱奇一": "爱奇艺",
+    "优土": "优酷",
+    "深度学系": "深度学习",
+    "机器学系": "机器学习",
+    "人工制能": "人工智能",
+    "神经网洛": "神经网络",
+    "算法模形": "算法模型",
+    "数据分析是": "数据分析师",
+}
+
+_HIGH_CONF_DICT = {
+    "公式公司": "公司",
+    "在在": "在",
+    "的的": "的",
+    "了了": "了",
+    "是是": "是",
+}
+
+
+@app.post("/api/ai/correction")
+async def ai_correction(req: CorrectionRequest):
+    """
+    规则引擎版本上下文纠错：
+    - 高置信度词（>= 90%）自动修正
+    - 中等置信度词（75-89%）提交用户确认
+    """
+    subs = [dict(s) for s in req.subtitles]
+    auto_fixed = []
+    pending = []
+
+    for i, s in enumerate(subs):
+        text = s["text"]
+        modified = text
+
+        # 高置信度 - 自动修正
+        for wrong, right in _HIGH_CONF_DICT.items():
+            if wrong in modified:
+                modified = modified.replace(wrong, right)
+                auto_fixed.append({
+                    "subtitleIndex": i,
+                    "original": wrong,
+                    "suggestion": right,
+                    "confidence": 95,
+                    "reason": "重复词汇自动合并",
+                })
+
+        # 中等置信度 - 待确认
+        for wrong, right in _CORRECTION_DICT.items():
+            if wrong in modified:
+                pending.append({
+                    "subtitleIndex": i,
+                    "original": wrong,
+                    "suggestion": right,
+                    "confidence": 88,
+                })
+                # 自动替换（待用户撤销）
+                modified = modified.replace(wrong, right)
+                auto_fixed.append({
+                    "subtitleIndex": i,
+                    "original": wrong,
+                    "suggestion": right,
+                    "confidence": 88,
+                    "reason": "专有名词纠错",
+                })
+
+        subs[i]["text"] = modified
+
+    return {
+        "subtitles": subs,
+        "auto_fixed": auto_fixed,
+        "pending": pending,
+        "changes_count": len(auto_fixed),
+    }
+
+
+# ---- 情感识别（预留接口） ----
+@app.post("/api/ai/emotion")
+async def ai_emotion(req: dict):
+    """情感识别接口（预留，模型待集成）"""
+    return {"subtitles": req.get("subtitles", []), "changes_count": 0, "message": "情感识别模型未加载"}
+
+
 if __name__ == "__main__":
     print("=" * 50)
-    print("  Video Subtitle Backend v2")
+    print("  Video Subtitle Backend v3")
     print("  http://127.0.0.1:8765")
     print("  GPU:", "CUDA available" if _check_gpu() else "CPU only (slower)")
     print("  ffmpeg:", "OK" if _check_ffmpeg() else "NOT FOUND - audio extraction will fail!")
