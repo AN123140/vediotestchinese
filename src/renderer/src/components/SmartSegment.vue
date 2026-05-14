@@ -111,7 +111,7 @@ async function runSegment() {
   if (!hasSubtitles.value) return
   isProcessing.value = true
   try {
-    const resp = await fetch('http://127.0.0.1:8765/api/ai/segment', {
+    const resp = await fetch('http://127.0.0.1:8081/api/ai/segment', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

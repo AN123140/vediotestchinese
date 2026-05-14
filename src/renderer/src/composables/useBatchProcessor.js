@@ -1,7 +1,7 @@
 import { ref, computed } from 'vue'
 import { useAppStore } from './useAppStore.js'
 
-const BACKEND_URL = 'http://127.0.0.1:8765'
+const BACKEND_URL = 'http://127.0.0.1:8081'
 
 export function useBatchProcessor() {
   const { store, notify } = useAppStore()

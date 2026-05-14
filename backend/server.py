@@ -5,28 +5,26 @@ FastAPI + OpenAI Whisper
 
 import asyncio
 import os
+import re
 import subprocess
 import tempfile
 import traceback
 from pathlib import Path
+from typing import Any, Dict, List
 
 import uvicorn
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
+from pydantic import BaseModel
 
 app = FastAPI(title="Video Subtitle Backend", version="1.0.0")
 
 # CORS support (frontend Vite dev server on port 8080)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:8080",
-        "http://127.0.0.1:8080",
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -225,7 +223,23 @@ async def run_recognition(video_path: str, model_size: str, language: str) -> di
             f"(model={model_size}, lang={options.get('language', 'auto')}, "
             f"audio={os.path.getsize(audio_path) / 1024:.1f}KB)"
         )
+
+        # Monkey-patch Whisper timing hook bug (PyTorch 2.11+ compatibility)
+        # whisper/timing.py:189 — outs[-1] can be None → TypeError
+        import whisper.timing as _wt
+        _orig_register = getattr(_wt, "register_timings_hooks", None)
+        if _orig_register:
+            def _patched_register(model):
+                """Skip timing hooks to avoid PyTorch 2.11+ compatibility crash"""
+                return  # no-op: skip timing registration entirely
+            _wt.register_timings_hooks = _patched_register
+
         result = model.transcribe(audio_path, **options)
+
+        # Restore original if needed (not strictly necessary for single-threaded use)
+        if _orig_register:
+            _wt.register_timings_hooks = _orig_register
+
         print(f"[Recognize] Done, {len(result['segments'])} segments")
         print(f"[Recognize] Detected language: {result.get('language', '?')}")
 
@@ -269,21 +283,62 @@ async def run_recognition(video_path: str, model_size: str, language: str) -> di
     return result
 
 
+class RecognizePathRequest(BaseModel):
+    path: str
+    model_size: str = "large-v3"
+    language: str = "zh"
+
+
+class AudioExtractRequest(BaseModel):
+    path: str
+
+
 @app.post("/api/recognize/path")
-async def recognize_by_path(
-    path: str,
-    model_size: str = "large-v3",
-    language: str = "zh",
-):
+async def recognize_by_path(req: RecognizePathRequest):
     """
     Electron only: pass local file path directly (no upload needed)
     """
-    if not os.path.isfile(path):
-        raise HTTPException(status_code=400, detail=f"File not found: {path}")
+    if not os.path.isfile(req.path):
+        raise HTTPException(status_code=400, detail=f"File not found: {req.path}")
 
     try:
-        result = await run_recognition(path, model_size, language)
+        result = await run_recognition(req.path, req.model_size, req.language)
         return JSONResponse(content=result)
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/audio/extract")
+async def audio_extract(req: AudioExtractRequest):
+    """从视频文件中提取音频，返回 PCM 数据"""
+    import wave
+
+    if not os.path.isfile(req.path):
+        raise HTTPException(status_code=400, detail=f"File not found: {req.path}")
+
+    try:
+        output_path = str(Path(tempfile.gettempdir()) / f"audio_extract_{os.getpid()}.wav")
+
+        # 使用 ffmpeg 提取音频
+        cmd = [
+            "ffmpeg", "-y", "-i", req.path,
+            "-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1",
+            output_path,
+        ]
+        subprocess.run(cmd, capture_output=True, check=True)
+
+        # 读取 wav 文件并返回
+        with open(output_path, "rb") as f:
+            data = f.read()
+
+        # 清理临时文件
+        try:
+            os.remove(output_path)
+        except OSError:
+            pass
+
+        return Response(content=data, media_type="audio/wav")
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
@@ -292,10 +347,6 @@ async def recognize_by_path(
 # ============================================================
 # v3.0  AI 智能功能接口
 # ============================================================
-
-from typing import Any, Dict, List
-from pydantic import BaseModel
-import re
 
 
 class SubtitleItem(BaseModel):
@@ -536,10 +587,16 @@ async def ai_emotion(req: dict):
 if __name__ == "__main__":
     print("=" * 50)
     print("  Video Subtitle Backend v3")
-    print("  http://127.0.0.1:8765")
+    print("  http://127.0.0.1:8081")
     print("  GPU:", "CUDA available" if _check_gpu() else "CPU only (slower)")
     print("  ffmpeg:", "OK" if _check_ffmpeg() else "NOT FOUND - audio extraction will fail!")
+    print("  模型加载方式: 懒加载（首次识别时加载）")
     print("=" * 50)
-    # Preload large-v3 model on startup
-    get_model("large-v3")
-    uvicorn.run(app, host="127.0.0.1", port=8765)
+    # 不再预加载模型，改为懒加载（首次识别时加载）
+    try:
+        uvicorn.run(app, host="127.0.0.1", port=8081, log_level="info")
+    except Exception as e:
+        print(f"[ERROR] 服务器启动失败: {e}")
+        import traceback
+        traceback.print_exc()
+        input("按回车键退出...")

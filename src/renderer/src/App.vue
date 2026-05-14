@@ -1,7 +1,7 @@
 <template>
   <div class="app">
     <!-- 标题栏 -->
-    <TitleBar />
+    <TitleBar :mode="isElectron() ? 'electron' : 'browser'" />
 
     <!-- Tab 导航栏 -->
     <TabBar v-model:activeTab="store.activeTab" />
@@ -86,6 +86,9 @@ import SubtitleTranslate from './components/SubtitleTranslate.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
 import AIPanel from './components/AIPanel.vue'
 import { formatSrtTime } from './utils/formatTime.js'
+import { isElectron } from './utils/environment.js'
+import * as fileAdapter from './adapters/fileAdapter.js'
+import * as recognizeAdapter from './adapters/recognizeAdapter.js'
 
 const { notify, dismissNotification } = useAppStore()
 
@@ -107,21 +110,10 @@ function handleSeek(time) {
   store.currentTime = time
 }
 
-// 导入视频
+// 导入视频（适配双环境）
 async function handleImportVideo() {
-  if (!window.electronAPI) {
-    const input = document.createElement('input')
-    input.type = 'file'
-    input.accept = '.mp4,.avi,.mov,.mkv,.flv,.wmv,.webm,video/*'
-    input.onchange = (e) => {
-      const file = e.target.files?.[0]
-      if (file) loadVideoFromBrowserFile(file)
-    }
-    input.click()
-    return
-  }
-  const file = await window.electronAPI.openVideoDialog()
-  if (file) loadElectronVideo(file)
+  const file = await fileAdapter.openVideo()
+  if (file) loadVideo(file)
 }
 
 // 拖拽导入
@@ -133,24 +125,30 @@ async function handleDropVideo(file) {
   }
 }
 
-function loadElectronVideo(file) {
-  store.videoSrc = 'file:///' + file.path.replace(/\\/g, '/')
-  store.videoInfo = { name: file.name, size: formatSize(file.size), path: file.path }
+/**
+ * 统一视频加载函数（支持 Electron 文件路径和浏览器 File 对象）
+ */
+function loadVideo(fileOrPath) {
+  let videoUrl, videoInfo
+
+  if (isElectron()) {
+    // Electron: fileOrPath 是 { path, name, size }
+    videoUrl = fileAdapter.getVideoUrl(fileOrPath)
+    videoInfo = { name: fileOrPath.name, size: formatSize(fileOrPath.size), path: fileOrPath.path }
+  } else {
+    // Browser: fileOrPath 是 File 对象
+    videoUrl = fileAdapter.getVideoUrl(fileOrPath)
+    videoInfo = { name: fileOrPath.name, size: formatSize(fileOrPath.size), path: '', _file: fileOrPath }
+  }
+
+  store.videoSrc = videoUrl
+  store.videoInfo = videoInfo
   store.subtitles = []
-  notify('success', `已加载：${file.name}`)
+  fileAdapter.addRecentFile(videoInfo)
+  notify('success', `已加载：${videoInfo.name}`)
 }
 
-function loadVideoFromBrowserFile(file) {
-  if (store.videoObjectUrl) URL.revokeObjectURL(store.videoObjectUrl)
-  store.videoObjectUrl = URL.createObjectURL(file)
-  store.videoSrc = store.videoObjectUrl
-  store.videoInfo = { name: file.name, size: formatSize(file.size) }
-  store.subtitles = []
-  store.currentTime = 0
-  notify('success', `已加载：${file.name}`)
-}
-
-const BACKEND_URL = 'http://127.0.0.1:8765'
+const BACKEND_URL = 'http://127.0.0.1:8081'
 
 // 后端服务健康检查（最多等待15秒，覆盖模型加载期）
 async function checkBackendHealth() {
@@ -195,50 +193,24 @@ async function handleRecognize() {
     }
 
     store.progress = 10
-    store.progressText = '正在上传视频文件...'
+    store.progressText = '正在处理视频文件...'
+    if (isElectron()) window.electronAPI.traySetProcessing(true)
 
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), 10 * 60 * 1000)
 
     try {
-      if (window.electronAPI && store.videoInfo?.path) {
-        store.progressText = '正在处理视频文件...'
-        const result = await callRecognizeByPath(store.videoInfo.path, controller.signal)
-        clearTimeout(timeoutId)
-        onRecognizeResult(result)
-        return
-      }
-
-      store.progressText = '正在读取视频文件...'
-      const videoBlob = await fetch(store.videoSrc).then(r => r.blob())
-      const formData = new FormData()
-      formData.append('file', videoBlob, store.videoInfo?.name || 'video.mp4')
-      formData.append('model_size', 'large-v3')
-      formData.append('language', store.recognizeLanguage)
-
-      store.progress = 20
-      store.progressText = '正在上传到识别服务器...'
-
-      const resp = await fetch(`${BACKEND_URL}/api/recognize`, {
-        method: 'POST',
-        body: formData,
+      store.progressText = '正在处理视频文件...'
+      const result = await recognizeAdapter.recognize(store.videoInfo, {
+        language: store.recognizeLanguage,
         signal: controller.signal,
+        onProgress: (p, t) => { store.progress = p; store.progressText = t },
       })
       clearTimeout(timeoutId)
-
-      store.progress = 80
-      store.progressText = '正在解析识别结果...'
-
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({}))
-        throw new Error(err.detail || `服务器错误: ${resp.status}`)
-      }
-      const result = await resp.json()
       onRecognizeResult(result)
     } catch (e) {
-      notify('error', classifyError(e))
-    } finally {
       clearTimeout(timeoutId)
+      notify('error', classifyError(e))
     }
   } catch (e) {
     notify('error', classifyError(e))
@@ -246,26 +218,11 @@ async function handleRecognize() {
     store.isProcessing = false
     store.progress = 0
     store.progressText = ''
+    if (isElectron()) window.electronAPI.traySetProcessing(false)
   }
 }
 
-async function callRecognizeByPath(filePath, signal) {
-  store.progress = 20
-  store.progressText = '正在调用识别服务...'
-  const resp = await fetch(`${BACKEND_URL}/api/recognize/path`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path: filePath, model_size: 'large-v3', language: store.recognizeLanguage }),
-    signal,
-  })
-  if (!resp.ok) {
-    const err = await resp.json().catch(() => ({}))
-    throw new Error(err.detail || `服务器错误: ${resp.status}`)
-  }
-  return await resp.json()
-}
-
-function onRecognizeResult(result) {
+async function onRecognizeResult(result) {
   if (!result.success) throw new Error('识别失败')
   store.subtitles = (result.subtitles || []).map((s, i) => ({
     id: s.id || i + 1, start: s.start, end: s.end, text: s.text,
@@ -273,27 +230,24 @@ function onRecognizeResult(result) {
   store.progress = 100
   store.progressText = '完成！'
   notify('success', `识别完成，共生成 ${store.subtitles.length} 条字幕`)
+  if (isElectron()) {
+    window.electronAPI.showNotification('识别完成', `已生成 ${store.subtitles.length} 条字幕`)
+  }
 }
 
-// 导出 SRT
+// 导出 SRT（适配双环境）
 async function handleExportSrt() {
   if (!store.subtitles.length) return
   const content = store.subtitles
     .map((s, i) => `${i + 1}\n${formatSrtTime(s.start)} --> ${formatSrtTime(s.end)}\n${s.text}\n`)
     .join('\n')
 
-  if (window.electronAPI) {
-    const savedPath = await window.electronAPI.saveSrtDialog(content)
-    if (savedPath) notify('success', `字幕已导出至：${savedPath}`)
-  } else {
-    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'subtitles.srt'
-    a.click()
-    URL.revokeObjectURL(url)
-    notify('success', '字幕文件已下载')
+  const savedPath = await fileAdapter.saveSrt(content)
+  if (savedPath) {
+    notify('success', `字幕已导出至：${savedPath}`)
+    if (isElectron()) {
+      window.electronAPI.showNotification('导出完成', `字幕已保存到 ${savedPath.split(/[\\/]/).pop()}`)
+    }
   }
 }
 
@@ -312,7 +266,7 @@ function handleSubtitleAdd(afterIndex) {
   store.subtitles.splice(afterIndex + 1, 0, newSub)
 }
 
-// 快捷键
+// 全局快捷键（应用内）
 function onKeyDown(e) {
   if (e.ctrlKey && e.shiftKey) {
     switch (e.key.toLowerCase()) {
@@ -327,19 +281,25 @@ function onKeyDown(e) {
   }
 }
 
-// 浏览器拖拽事件
-function onBrowserFileDrop(e) {
-  loadVideoFromBrowserFile(e.detail)
+// 监听主进程全局快捷键触发（仅 Electron）
+function setupGlobalShortcutListeners() {
+  if (!isElectron()) return
+  window.electronAPI.onGlobalShortcut((action) => {
+    switch (action) {
+      case 'open-video': handleImportVideo(); break
+      case 'export-srt': handleExportSrt(); break
+      case 'start-recognize': handleRecognize(); break
+    }
+  })
 }
 
 onMounted(() => {
   window.addEventListener('keydown', onKeyDown)
-  window.addEventListener('browser-file-drop', onBrowserFileDrop)
+  setupGlobalShortcutListeners()
 })
 
 onUnmounted(() => {
   window.removeEventListener('keydown', onKeyDown)
-  window.removeEventListener('browser-file-drop', onBrowserFileDrop)
 })
 
 // 工具函数

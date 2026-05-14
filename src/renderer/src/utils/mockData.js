@@ -86,8 +86,20 @@ export function generateMockBatchTasks(count = 5) {
 /**
  * 生成模拟翻译结果
  * @param {string} sourceText - 原文
+ * @param {string} targetLang - 目标语言（en/zh/ja/ko）
  */
-export function generateMockTranslation(sourceText) {
+export function generateMockTranslation(sourceText, targetLang = 'en') {
+  // 目标为中文：直接返回原文（原文已经是中文）
+  if (targetLang === 'zh') {
+    return sourceText
+  }
+
+  // 目标为日文/韩文（Mock 暂不支持，返回原文 + 提示）
+  if (targetLang === 'ja' || targetLang === 'ko') {
+    return `[${targetLang === 'ja' ? '日文' : '韩文'}翻译暂未启用] ${sourceText}`
+  }
+
+  // 目标为英文（默认）
   const translationMap = {
     '大家好，欢迎来到本期视频。': 'Hello everyone, welcome to this video.',
     '今天我们要讨论一个非常有趣的话题。': 'Today we will discuss a very interesting topic.',
@@ -115,15 +127,19 @@ export function generateMockTranslation(sourceText) {
     return translationMap[sourceText]
   }
 
-  // 通用模拟翻译
+  // 通用模拟翻译：关键词替换 + 简单句式转换
   const words = sourceText.replace(/[，。！？、；：""''（）【】]/g, ' ').trim().split(/\s+/)
   const simpleMap = {
     '的': 'of', '是': 'is', '在': 'in', '有': 'have', '和': 'and',
     '不': 'not', '我们': 'we', '他们': 'they', '这个': 'this', '那个': 'that',
     '技术': 'technology', '数据': 'data', '系统': 'system', '模型': 'model',
     '视频': 'video', '功能': 'function', '问题': 'problem', '方法': 'method',
+    '你': 'you', '他': 'he', '我': 'I', '她': 'she',
+    '什么': 'what', '怎么': 'how', '哪里': 'where', '为什么': 'why',
+    '好': 'good', '大': 'big', '小': 'small', '新': 'new', '老': 'old',
   }
-  return words.map(w => simpleMap[w] || w).join(' ') + '.'
+  const translated = words.map(w => simpleMap[w] || w).join(' ')
+  return translated.charAt(0).toUpperCase() + translated.slice(1) + '.'
 }
 
 /**

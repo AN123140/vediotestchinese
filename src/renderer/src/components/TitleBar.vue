@@ -1,5 +1,6 @@
 <template>
-  <div class="title-bar" @dblclick="toggleMaximize">
+  <div class="title-bar" :class="[mode, { 'is-electron': mode === 'electron' }]" @dblclick="handleDoubleClick">
+    <!-- 左侧：Logo + 名称 + 版本 -->
     <div class="title-bar-left">
       <div class="app-logo">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
@@ -9,12 +10,20 @@
         </svg>
       </div>
       <span class="app-name">视频字幕生成器</span>
-      <span class="version-tag">v2.0</span>
+      <span class="version-tag">v3.2</span>
+      <!-- 网页端环境标识 -->
+      <span v-if="mode === 'browser'" class="env-badge">网页版</span>
     </div>
 
     <div class="title-drag-area"></div>
 
-    <div class="title-bar-right">
+    <!-- 右侧：仅 Electron 模式显示窗口控制按钮 -->
+    <div v-if="mode === 'electron'" class="title-bar-right">
+      <button class="win-btn" :class="{ active: isOnTop }" @click.stop="toggleOnTop" :title="isOnTop ? '取消置顶' : '窗口置顶'">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 2l3 7h7l-5.5 4 2 7L12 16l-6.5 4 2-7L2 9h7z"/>
+        </svg>
+      </button>
       <button class="win-btn" @click.stop="minimize" title="最小化">
         <svg width="12" height="12" viewBox="0 0 12 12"><line x1="1" y1="6" x2="11" y2="6" stroke="currentColor" stroke-width="1.5"/></svg>
       </button>
@@ -32,17 +41,34 @@
 </template>
 
 <script setup>
+import { ref } from 'vue'
+
+const props = defineProps({
+  /** 运行模式：'electron' | 'browser' */
+  mode: {
+    type: String,
+    default: 'electron',
+    validator: (v) => ['electron', 'browser'].includes(v),
+  },
+})
+
+const isOnTop = ref(false)
+
 function minimize() {
-  if (window.electronAPI) window.electronAPI.windowMinimize()
+  window.electronAPI.windowMinimize()
 }
 function maximize() {
-  if (window.electronAPI) window.electronAPI.windowMaximize()
+  window.electronAPI.windowMaximize()
 }
 function close() {
-  if (window.electronAPI) window.electronAPI.windowClose()
+  window.electronAPI.windowClose()
 }
-function toggleMaximize() {
-  if (window.electronAPI) window.electronAPI.windowMaximize()
+function handleDoubleClick() {
+  if (props.mode === 'electron') window.electronAPI.windowMaximize()
+}
+async function toggleOnTop() {
+  isOnTop.value = !isOnTop.value
+  await window.electronAPI.windowSetOnTop(isOnTop.value)
 }
 </script>
 
@@ -53,8 +79,12 @@ function toggleMaximize() {
   align-items: center;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-light);
-  -webkit-app-region: drag;
   flex-shrink: 0;
+}
+
+/* 仅 Electron 模式启用拖拽 */
+.title-bar.is-electron {
+  -webkit-app-region: drag;
 }
 
 .title-bar-left {
@@ -62,6 +92,9 @@ function toggleMaximize() {
   align-items: center;
   gap: 8px;
   padding: 0 14px;
+}
+
+.title-bar.is-electron .title-bar-left {
   -webkit-app-region: no-drag;
 }
 
@@ -84,14 +117,29 @@ function toggleMaximize() {
   border-radius: 3px;
 }
 
+.env-badge {
+  font-size: 10px;
+  color: #fff;
+  background: #4f8ef7;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-weight: 500;
+}
+
 .title-drag-area {
   flex: 1;
   height: 100%;
+}
+
+.title-bar.is-electron .title-drag-area {
   -webkit-app-region: drag;
 }
 
 .title-bar-right {
   display: flex;
+}
+
+.title-bar.is-electron .title-bar-right {
   -webkit-app-region: no-drag;
 }
 
@@ -116,5 +164,10 @@ function toggleMaximize() {
 .close-btn:hover {
   background: var(--danger);
   color: #fff;
+}
+
+.win-btn.active {
+  color: var(--accent);
+  background: var(--accent-light);
 }
 </style>

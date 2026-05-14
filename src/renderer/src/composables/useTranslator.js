@@ -22,7 +22,7 @@ export function useTranslator() {
       translationResults.value.push({
         index: i,
         original: subtitles[i].text,
-        translated: generateMockTranslation(subtitles[i].text),
+        translated: generateMockTranslation(subtitles[i].text, targetLang),
         confidence: 0.75 + Math.random() * 0.24,
       })
     }
@@ -32,10 +32,10 @@ export function useTranslator() {
   }
 
   // 单句重译
-  async function retranslate(index, originalText) {
+  async function retranslate(index, originalText, targetLang = 'en') {
     await mockDelay(300 + Math.random() * 200)
     if (translationResults.value[index]) {
-      translationResults.value[index].translated = generateMockTranslation(originalText)
+      translationResults.value[index].translated = generateMockTranslation(originalText, targetLang)
       translationResults.value[index].confidence = 0.8 + Math.random() * 0.19
     }
   }

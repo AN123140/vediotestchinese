@@ -4,6 +4,7 @@ node_modules
 # Build output
 dist
 dist-ssr
+dist-web
 out
 
 # Logs
@@ -40,6 +41,8 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
+.trae/
+.workbuddy/
 
 # Env & secrets
 *.local

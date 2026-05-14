@@ -59,6 +59,71 @@
           </div>
         </template>
 
+        <!-- 系统设置（桌面专属） -->
+        <template v-if="activeCat === 'system'">
+          <h3 class="section-title">系统设置</h3>
+
+          <div class="setting-group">
+            <span class="group-title">启动行为</span>
+            <div class="setting-row">
+              <div class="setting-info">
+                <span class="setting-label">开机自动启动</span>
+                <span class="setting-desc">系统启动时自动运行本应用</span>
+              </div>
+              <button class="toggle" :class="{ active: sysSettings.autoLaunch }"
+                      @click="sysSettings.autoLaunch = !sysSettings.autoLaunch"></button>
+            </div>
+            <div class="setting-row">
+              <div class="setting-info">
+                <span class="setting-label">最小化到系统托盘</span>
+                <span class="setting-desc">点击最小化时隐藏到托盘而非任务栏</span>
+              </div>
+              <button class="toggle" :class="{ active: sysSettings.minimizeToTray }"
+                      @click="sysSettings.minimizeToTray = !sysSettings.minimizeToTray"></button>
+            </div>
+            <div class="setting-row">
+              <div class="setting-info">
+                <span class="setting-label">关闭窗口时最小化到托盘</span>
+                <span class="setting-desc">关闭按钮不退出程序，仅隐藏到托盘</span>
+              </div>
+              <button class="toggle" :class="{ active: sysSettings.closeToTray }"
+                      @click="sysSettings.closeToTray = !sysSettings.closeToTray"></button>
+            </div>
+          </div>
+
+          <div class="setting-group">
+            <span class="group-title">通知设置</span>
+            <div class="setting-row">
+              <span class="setting-label">处理完成时通知</span>
+              <button class="toggle" :class="{ active: sysSettings.notifyOnComplete }"
+                      @click="sysSettings.notifyOnComplete = !sysSettings.notifyOnComplete"></button>
+            </div>
+            <div class="setting-row">
+              <span class="setting-label">出错时通知</span>
+              <button class="toggle" :class="{ active: sysSettings.notifyOnError }"
+                      @click="sysSettings.notifyOnError = !sysSettings.notifyOnError"></button>
+            </div>
+          </div>
+
+          <div class="setting-group">
+            <div class="group-header">
+              <span class="group-title">全局快捷键</span>
+              <button class="btn btn-sm btn-secondary" @click="resetShortcuts">恢复默认</button>
+            </div>
+            <div v-for="sc in shortcutLabels" :key="sc.key" class="setting-row">
+              <span class="setting-label">{{ sc.label }}</span>
+              <input type="text" class="shortcut-input"
+                     :value="sysSettings.shortcuts[sc.key]"
+                     @input="sysSettings.shortcuts[sc.key] = $event.target.value"
+                     :placeholder="`如 CommandOrControl+Shift+O`" />
+            </div>
+          </div>
+
+          <div style="display:flex; justify-content:flex-end; margin-top:8px">
+            <button class="btn btn-primary" @click="saveSysSettings">保存设置</button>
+          </div>
+        </template>
+
         <!-- 识别设置 -->
         <template v-if="activeCat === 'recognition'">
           <h3 class="section-title">语音识别优化</h3>
@@ -283,8 +348,8 @@
             </div>
             <div class="about-info">
               <h4>视频字幕自动生成器</h4>
-              <p class="about-version">版本 v2.0.0</p>
-              <p class="about-desc">基于 AI 语音识别技术，帮助用户快速自动地为视频生成字幕。支持多种格式导出、批量处理、字幕翻译等功能。</p>
+              <p class="about-version">版本 v3.1.0</p>
+              <p class="about-desc">基于 AI 语音识别技术，帮助用户快速自动地为视频生成字幕。支持多种格式导出、批量处理、字幕翻译、AI 智能优化等功能。纯桌面原生版本，支持系统托盘、全局快捷键及系统通知。</p>
             </div>
           </div>
           <div class="about-links">
@@ -321,9 +386,12 @@
 </template>
 
 <script setup>
-import { ref, watch, h } from 'vue'
+import { ref, computed, watch, h, onMounted } from 'vue'
 import store from '../composables/useAppStore.js'
 import { getExportFormats } from '../utils/exportFormats.js'
+import { isElectron } from '../utils/environment.js'
+import * as fileAdapter from '../adapters/fileAdapter.js'
+import * as storageAdapter from '../adapters/storageAdapter.js'
 
 const formats = getExportFormats()
 const activeCat = ref('general')
@@ -333,14 +401,71 @@ const newHotword = ref('')
 const newHotwordWeight = ref(5)
 const activePreset = ref(null)
 
-// 导航分类
-const categories = [
+// 桌面专属设置
+const sysSettings = ref({
+  autoLaunch: false,
+  minimizeToTray: true,
+  closeToTray: true,
+  notifyOnComplete: true,
+  notifyOnError: true,
+  shortcuts: {
+    openVideo: 'CommandOrControl+Shift+O',
+    exportSrt: 'CommandOrControl+Shift+S',
+    startRecognize: 'CommandOrControl+Shift+R',
+  },
+})
+
+const shortcutLabels = [
+  { key: 'openVideo', label: '打开视频' },
+  { key: 'exportSrt', label: '导出字幕' },
+  { key: 'startRecognize', label: '开始识别' },
+]
+
+onMounted(async () => {
+  if (isElectron()) {
+    const s = await window.electronAPI.getSettings()
+    if (s) sysSettings.value = { ...sysSettings.value, ...s }
+  } else {
+    // 浏览器环境从 localStorage 读取
+    const s = await storageAdapter.get('sys-settings')
+    if (s) sysSettings.value = { ...sysSettings.value, ...s }
+  }
+})
+
+async function saveSysSettings() {
+  if (isElectron()) {
+    await window.electronAPI.saveSettings(sysSettings.value)
+  } else {
+    await storageAdapter.set('sys-settings', sysSettings.value)
+  }
+  store.notify('success', '系统设置已保存')
+}
+
+function resetShortcuts() {
+  sysSettings.value.shortcuts = {
+    openVideo: 'CommandOrControl+Shift+O',
+    exportSrt: 'CommandOrControl+Shift+S',
+    startRecognize: 'CommandOrControl+Shift+R',
+  }
+}
+
+// 导航分类（根据环境动态过滤）
+const allCategories = [
   { id: 'general', label: '通用设置', icon: { render() { return h('svg', { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2' }, [h('circle', { cx: '12', cy: '12', r: '3' }), h('path', { d: 'M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42' })]) } } },
+  { id: 'system', label: '系统设置', icon: { render() { return h('svg', { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2' }, [h('rect', { x: '2', y: '3', width: '20', height: '14', rx: '2' }), h('line', { x1: '8', y1: '21', x2: '16', y2: '21' }), h('line', { x1: '12', y1: '17', x2: '12', y2: '21' })]) } } },
   { id: 'recognition', label: '识别优化', icon: { render() { return h('svg', { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2' }, [h('path', { d: 'M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z' }), h('path', { d: 'M19 10v2a7 7 0 01-14 0v-2' }), h('line', { x1: '12', y1: '19', x2: '12', y2: '23' }), h('line', { x1: '8', y1: '23', x2: '16', y2: '23' })]) } } },
   { id: 'export', label: '导出设置', icon: { render() { return h('svg', { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2' }, [h('path', { d: 'M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4' }), h('polyline', { points: '7 10 12 15 17 10' }), h('line', { x1: '12', y1: '15', x2: '12', y2: '3' })]) } } },
   { id: 'translate', label: '翻译设置', icon: { render() { return h('svg', { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2' }, [h('path', { d: 'M5 8l6 6' }), h('path', { d: 'M4 14l6-6 2-3' }), h('path', { d: 'M2 5h12' }), h('path', { d: 'M22 22l-5-10-5 10' }), h('path', { d: 'M14 18h6' })]) } } },
   { id: 'about', label: '关于', icon: { render() { return h('svg', { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2' }, [h('circle', { cx: '12', cy: '12', r: '10' }), h('line', { x1: '12', y1: '16', x2: '12', y2: '12' }), h('line', { x1: '12', y1: '8', x2: '12.01', y2: '8' })]) } } },
 ]
+
+const categories = computed(() => {
+  if (!isElectron()) {
+    // 网页端隐藏"系统设置"（托盘/快捷键/开机启动等桌面专属功能）
+    return allCategories.filter(cat => cat.id !== 'system')
+  }
+  return allCategories
+})
 
 // 热词预设
 const hotwordPresets = [
@@ -382,40 +507,26 @@ function addSpeaker() {
   })
 }
 
-function importHotwords() {
-  const input = document.createElement('input')
-  input.type = 'file'
-  input.accept = '.json,.txt'
-  input.onchange = (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = (ev) => {
-      try {
-        const data = JSON.parse(ev.target.result)
-        if (Array.isArray(data)) {
-          const words = data.map(w => typeof w === 'string' ? { text: w, weight: 5 } : w)
-          store.recognitionOptimize.hotwords.push(...words)
-          store.notify('success', `导入了 ${words.length} 条热词`)
-        }
-      } catch { store.notify('error', '文件格式错误') }
+async function importHotwords() {
+  const result = await fileAdapter.openJsonDialog()
+  if (!result) return
+  try {
+    const data = JSON.parse(result)
+    if (Array.isArray(data)) {
+      const words = data.map(w => typeof w === 'string' ? { text: w, weight: 5 } : w)
+      store.recognitionOptimize.hotwords.push(...words)
+      store.notify('success', `导入了 ${words.length} 条热词`)
     }
-    reader.readAsText(file)
-  }
-  input.click()
+  } catch { store.notify('error', '文件格式错误') }
 }
 
-function exportHotwords() {
+async function exportHotwords() {
   const data = store.recognitionOptimize.hotwords.map(w => w.text)
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url; a.download = 'hotwords.json'; a.click()
-  URL.revokeObjectURL(url)
+  await fileAdapter.saveJsonDialog(JSON.stringify(data, null, 2), 'hotwords.json')
 }
 
 function checkUpdate() {
-  store.notify('info', '当前已是最新版本 v2.0.0')
+  store.notify('info', '当前已是最新版本 v3.1.0')
 }
 </script>
 
@@ -720,6 +831,24 @@ function checkUpdate() {
 /* 模态框 */
 .modal-body {
   padding: 16px 0;
+}
+
+/* 快捷键输入 */
+.shortcut-input {
+  height: 30px;
+  padding: 0 8px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  width: 220px;
+  font-family: monospace;
+}
+
+.shortcut-input:focus {
+  border-color: var(--accent);
+  outline: none;
 }
 
 .form-item {

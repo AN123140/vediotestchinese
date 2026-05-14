@@ -107,7 +107,7 @@ const summaryItems = computed(() => {
   ]
 })
 
-const BACKEND = 'http://127.0.0.1:8765'
+const BACKEND = 'http://127.0.0.1:8081'
 const enabledSteps = computed(() => steps.filter(s => s.enabled))
 const stepWeight = computed(() => {
   const n = enabledSteps.value.length

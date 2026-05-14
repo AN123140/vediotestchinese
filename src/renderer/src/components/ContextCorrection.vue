@@ -120,7 +120,7 @@ async function runCorrection() {
   if (!hasSubtitles.value) return
   isProcessing.value = true
   try {
-    const resp = await fetch('http://127.0.0.1:8765/api/ai/correction', {
+    const resp = await fetch('http://127.0.0.1:8081/api/ai/correction', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ subtitles: store.subtitles }),

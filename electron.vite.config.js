@@ -4,9 +4,11 @@ import { resolve } from 'path'
 
 export default defineConfig({
   main: {
+    external: ['electron'],
     plugins: [externalizeDepsPlugin()],
   },
   preload: {
+    external: ['electron'],
     plugins: [externalizeDepsPlugin()],
   },
   renderer: {

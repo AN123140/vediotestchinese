@@ -189,7 +189,7 @@ async function startTranslate() {
 }
 
 async function handleRetranslate(index) {
-  await retranslate(index, store.subtitles[index].text)
+  await retranslate(index, store.subtitles[index].text, targetLang.value)
   store.notify('info', `第 ${index + 1} 条已重新翻译`)
 }
 
@@ -256,21 +256,26 @@ function importGlossary() {
 </script>
 
 <style scoped>
+/* ===== 面板根 ===== */
 .translate-panel {
   flex: 1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  background: var(--bg-primary);
 }
 
-/* 设置栏 */
+/* ===== 顶部设置栏（卡片式） ===== */
 .translate-settings-bar {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 10px 16px;
-  background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-light);
+  gap: 12px;
+  padding: 12px 16px;
+  margin: 8px 12px 4px;
+  background: var(--bg-card, var(--bg-secondary));
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   flex-shrink: 0;
   flex-wrap: wrap;
 }
@@ -283,45 +288,74 @@ function importGlossary() {
 
 .setting-item label {
   font-size: 12px;
+  font-weight: 500;
   color: var(--text-secondary);
   white-space: nowrap;
+  letter-spacing: 0.3px;
 }
 
 .setting-select {
-  height: 30px;
-  padding: 0 24px 0 8px;
+  height: 32px;
+  padding: 0 28px 0 10px;
   font-size: 12px;
-  min-width: 120px;
+  font-weight: 500;
+  min-width: 110px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color, #d0d7de);
+  background: var(--bg-input, #fff);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.setting-select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-ring, rgba(79, 142, 247, 0.12));
 }
 
 .translate-actions-top {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   margin-left: auto;
 }
 
-/* 空状态 */
+/* ===== 空状态 ===== */
 .empty-state {
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 14px;
   color: var(--text-muted);
+  padding: 40px;
 }
 
-.empty-state p { font-size: 14px; }
+.empty-state svg {
+  opacity: 0.5;
+}
 
-/* 翻译对照区 */
+.empty-state p {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+/* ===== 翻译对照区 ===== */
 .translate-content {
   flex: 1;
   overflow: hidden;
+  padding: 4px 12px 0;
 }
 
 .translate-columns {
   display: flex;
   height: 100%;
+  gap: 2px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg-card, var(--bg-secondary));
 }
 
 .translate-column {
@@ -329,50 +363,58 @@ function importGlossary() {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border-right: 1px solid var(--border-light);
+  background: var(--bg-primary);
 }
 
-.translate-column:last-child {
-  border-right: none;
+.translate-column:first-child {
+  border-right: 1px solid var(--border-light);
 }
 
 .column-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
+  padding: 10px 14px;
   font-size: 12px;
   font-weight: 600;
   color: var(--text-secondary);
-  background: var(--bg-hover);
+  background: var(--bg-header, #f6f8fa);
   border-bottom: 1px solid var(--border-light);
   flex-shrink: 0;
+  letter-spacing: 0.3px;
 }
 
 .confidence-badge {
   font-size: 11px;
+  font-weight: 600;
   color: var(--success);
-  background: var(--success-light);
-  padding: 2px 6px;
-  border-radius: 3px;
-  font-weight: 500;
+  background: var(--success-bg, rgba(34, 197, 94, 0.10));
+  padding: 3px 8px;
+  border-radius: 20px;
 }
 
 .column-body {
   flex: 1;
   overflow-y: auto;
+  padding: 4px 0;
 }
 
+/* ===== 字幕行 ===== */
 .subtitle-row {
   display: flex;
-  gap: 8px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border-light);
-  transition: background 0.1s;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-subtle, rgba(0, 0, 0, 0.03));
+  transition: background 0.12s ease;
+}
+
+.subtitle-row:last-child {
+  border-bottom: none;
 }
 
 .subtitle-row.active {
-  background: var(--accent-light);
+  background: var(--accent-very-light, rgba(79, 142, 247, 0.06));
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .subtitle-row:hover {
@@ -380,8 +422,9 @@ function importGlossary() {
 }
 
 .sub-index {
-  width: 24px;
+  width: 20px;
   font-size: 11px;
+  font-weight: 600;
   color: var(--text-muted);
   text-align: right;
   padding-top: 2px;
@@ -395,68 +438,112 @@ function importGlossary() {
 
 .sub-time {
   font-size: 11px;
+  font-weight: 500;
   color: var(--text-muted);
-  margin-bottom: 2px;
+  margin-bottom: 3px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.2px;
 }
 
 .sub-text {
-  font-size: 13px;
+  font-size: 13.5px;
   color: var(--text-primary);
-  line-height: 1.5;
+  line-height: 1.55;
+  word-break: break-word;
 }
 
+/* 翻译结果列的 meta 区 */
 .sub-meta {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-bottom: 4px;
+  gap: 8px;
+  margin-bottom: 5px;
 }
 
 .confidence {
   font-size: 11px;
-  color: var(--success);
-  font-weight: 500;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 20px;
+  letter-spacing: 0.2px;
+}
+
+/* 置信度颜色编码 */
+.confidence:not(.low) {
+  color: #16a34a;
+  background: rgba(22, 163, 74, 0.10);
 }
 
 .confidence.low {
-  color: var(--warning);
+  color: #dc2626;
+  background: rgba(220, 38, 38, 0.08);
 }
 
 .retranslate-btn {
-  padding: 2px;
-  opacity: 0.5;
+  padding: 3px;
+  border-radius: 4px;
+  opacity: 0.4;
+  transition: opacity 0.15s, background 0.15s;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
 }
 
 .retranslate-btn:hover {
   opacity: 1;
+  background: var(--bg-hover);
+  color: var(--accent);
 }
 
+/* ===== 翻译文本编辑框 ===== */
 .sub-text-edit {
   width: 100%;
-  min-height: 36px;
-  font-size: 13px;
-  line-height: 1.5;
+  min-height: 32px;
+  padding: 6px 10px;
+  font-size: 13.5px;
+  line-height: 1.55;
   resize: vertical;
   font-family: inherit;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: var(--bg-input, #fafbfc);
+  color: var(--text-primary);
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
 }
 
-/* 底部 */
+.sub-text-edit:hover {
+  border-color: var(--border-color, #d0d7de);
+}
+
+.sub-text-edit:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--bg-primary);
+  box-shadow: 0 0 0 3px var(--accent-ring, rgba(79, 142, 247, 0.12));
+}
+
+/* ===== 底部状态栏 ===== */
 .translate-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 16px;
-  background: var(--bg-secondary);
-  border-top: 1px solid var(--border-light);
+  padding: 10px 16px;
+  margin: 4px 12px 8px;
+  background: var(--bg-card, var(--bg-secondary));
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   flex-shrink: 0;
 }
 
 .glossary-info {
   font-size: 12px;
+  font-weight: 500;
   color: var(--text-muted);
 }
 
-/* 术语库弹窗 */
+/* ===== 术语库弹窗 ===== */
 .glossary-content {
   margin-bottom: 16px;
 }
@@ -470,47 +557,60 @@ function importGlossary() {
 
 .glossary-add input {
   flex: 1;
+  padding: 7px 10px;
+  font-size: 13px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
 }
 
 .glossary-add .arrow,
 .glossary-item .term-arrow {
   color: var(--text-muted);
   font-size: 14px;
+  font-weight: 600;
 }
 
 .glossary-list {
   max-height: 300px;
   overflow-y: auto;
   border: 1px solid var(--border-light);
-  border-radius: var(--radius);
+  border-radius: 8px;
+  background: var(--bg-primary);
 }
 
 .glossary-item {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border-light);
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-subtle, rgba(0, 0, 0, 0.03));
+  transition: background 0.12s;
 }
 
 .glossary-item:last-child {
   border-bottom: none;
 }
 
+.glossary-item:hover {
+  background: var(--bg-hover);
+}
+
 .term-source {
   flex: 1;
   font-size: 13px;
   font-weight: 500;
+  color: var(--text-primary);
 }
 
 .term-target {
   flex: 1;
   font-size: 13px;
+  font-weight: 500;
   color: var(--accent);
 }
 
 .glossary-empty {
-  padding: 24px;
+  padding: 28px;
   text-align: center;
   color: var(--text-muted);
   font-size: 13px;
@@ -519,9 +619,10 @@ function importGlossary() {
 .modal-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 10px;
 }
 
+/* ===== 动画 ===== */
 .spin {
   animation: spin 1s linear infinite;
 }
@@ -529,5 +630,27 @@ function importGlossary() {
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+/* ===== 滚动条美化 ===== */
+.column-body::-webkit-scrollbar,
+.glossary-list::-webkit-scrollbar {
+  width: 5px;
+}
+
+.column-body::-webkit-scrollbar-track,
+.glossary-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.column-body::-webkit-scrollbar-thumb,
+.glossary-list::-webkit-scrollbar-thumb {
+  background: var(--border-color, #d0d7de);
+  border-radius: 10px;
+}
+
+.column-body::-webkit-scrollbar-thumb:hover,
+.glossary-list::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
 }
 </style>

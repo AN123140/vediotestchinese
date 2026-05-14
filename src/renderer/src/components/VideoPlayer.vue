@@ -16,6 +16,24 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
           选择视频文件
         </button>
+
+        <!-- 最近文件列表 -->
+        <div v-if="recentFiles.length > 0" class="recent-files">
+          <div class="recent-title">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            最近打开
+          </div>
+          <div class="recent-list">
+            <div v-for="file in recentFiles.slice(0, 5)" :key="file.path"
+                 class="recent-item"
+                 @click.stop="openRecentFile(file)"
+                 :title="file.path">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+              <span class="recent-name">{{ file.name }}</span>
+            </div>
+          </div>
+          <button class="recent-clear" @click.stop="clearRecent">清除记录</button>
+        </div>
       </div>
     </div>
 
@@ -90,7 +108,8 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
+import * as fileAdapter from '../adapters/fileAdapter.js'
 
 const props = defineProps({
   videoSrc: String,
@@ -109,6 +128,20 @@ const current = ref(0)
 const duration = ref(0)
 const playbackRate = ref('1')
 const dragOver = ref(false)
+const recentFiles = ref([])
+
+onMounted(async () => {
+  recentFiles.value = await fileAdapter.getRecentFiles()
+})
+
+function openRecentFile(file) {
+  emit('drop-video', { path: file.path, name: file.name, size: file.size || 0 })
+}
+
+async function clearRecent() {
+  fileAdapter.clearRecentFiles()
+  recentFiles.value = []
+}
 
 const progressPercent = computed(() =>
   duration.value ? (current.value / duration.value) * 100 : 0
@@ -126,21 +159,14 @@ function onDrop(e) {
   dragOver.value = false
   const file = e.dataTransfer?.files?.[0]
   if (!file) return
-
-  // 浏览器环境：直接传递 File 对象给父组件
-  if (window.electronAPI) {
-    // Electron 环境：有 file.path
-    if (/\.(mp4|avi|mov|mkv|flv|wmv|webm)$/i.test(file.name)) {
-      emit('drop-video', { path: file.path || '', name: file.name, size: file.size })
-    }
-    return
-  }
-
-  // 纯浏览器：用 File API 加载
+  // 兼容双环境：Electron 有 file.path，浏览器没有
   if (/\.(mp4|avi|mov|mkv|flv|wmv|webm)$/i.test(file.name)) {
-    // 通过自定义事件传递 File 对象
-    const evt = new CustomEvent('browser-file-drop', { detail: file })
-    window.dispatchEvent(evt)
+    emit('drop-video', {
+      path: file.path || '',
+      name: file.name,
+      size: file.size,
+      _file: file.path ? null : file, // 浏览器模式保留 File 引用
+    })
   }
 }
 
@@ -390,5 +416,71 @@ watch(
   padding: 4px 6px;
   border-radius: var(--radius);
   cursor: pointer;
+}
+
+/* 最近文件 */
+.recent-files {
+  margin-top: 20px;
+  width: 320px;
+  text-align: left;
+}
+
+.recent-title {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.recent-list {
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.recent-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border-light);
+  cursor: pointer;
+  transition: background 0.12s;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.recent-item:last-child {
+  border-bottom: none;
+}
+
+.recent-item:hover {
+  background: var(--accent-light);
+  color: var(--accent);
+}
+
+.recent-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-clear {
+  margin-top: 6px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.recent-clear:hover {
+  color: var(--danger);
 }
 </style>
